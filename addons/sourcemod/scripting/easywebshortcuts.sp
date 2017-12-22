@@ -4,36 +4,58 @@
 #pragma semicolon 1
 #pragma newdecls required
 
-// Plugin Informaiton
-#define VERSION "1.00"
-
-//Definitions
-#define MAX_SHORTCUTS 1000
-
-//Globals
-enum WebShortcutStruct
-{
-  String:triggerText[255],
-  width,
-  height,
-  bool:hidden,
-  String:destinationUrl[2000]
-}
-
-int g_WebShortcuts[MAX_SHORTCUTS][WebShortcutStruct];
-int g_WebShortcutsCount = 0;
-
-char g_ServerIp[16];
-char g_ServerPort[6];
+/*********************************
+ *  Plugin Information
+ *********************************/
+#define PLUGIN_VERSION "1.10"
 
 public Plugin myinfo =
 {
   name = "Easy Web Shortcuts",
   author = "Invex | Byte",
   description = "Easy Web Shortcuts for CSGO",
-  version = VERSION,
+  version = PLUGIN_VERSION,
   url = "http://www.invexgaming.com.au"
 };
+
+/*********************************
+ *  Definitions
+ *********************************/
+#define MAX_SHORTCUTS 1000
+#define MAX_URL_LENGTH 2000
+#define MAX_OPTION_GROUPS 4
+#define VALUE_SEPARATOR "|"
+
+/*********************************
+ *  Enumerations
+ *********************************/
+enum WebShortcutStruct
+{
+  ArrayList:triggers,
+  ArrayList:commands,
+  width,
+  height,
+  bool:hidden,
+  String:destinationUrl[MAX_URL_LENGTH],
+}
+
+/*********************************
+ *  Globals
+ *********************************/
+
+ //Main
+int g_WebShortcuts[MAX_SHORTCUTS][WebShortcutStruct];
+int g_WebShortcutsCount = 0;
+
+//Replace Variables
+char g_ServerIp[16];
+char g_ServerPort[6];
+char g_CurrentMapName[64];
+char g_CurrentMapDisplayName[64];
+
+/*********************************
+ *  Forwards
+ *********************************/
 
 public void OnPluginStart()
 {
@@ -47,15 +69,44 @@ public void OnPluginStart()
 
   ConVar hostport = FindConVar("hostport");
   hostport.GetString(g_ServerPort, sizeof(g_ServerPort));
-  
-  //Load Shortcuts from config file
+
+  //Load config
   LoadWebShortcutsFromConfig();
 }
 
-public void OnMapEnd()
+public void OnMapStart()
 {
-	LoadWebShortcutsFromConfig();
+  //Get map related replace values
+  GetCurrentMap(g_CurrentMapName, sizeof(g_CurrentMapName));
+  GetMapDisplayName(g_CurrentMapName, g_CurrentMapDisplayName, sizeof(g_CurrentMapDisplayName));
 }
+
+//Process triggers
+public Action OnClientSayCommand(int client, const char[] command_t, const char[] command)
+{
+  for (int i = 0; i < g_WebShortcutsCount; ++i) {
+    if (g_WebShortcuts[i][triggers].FindString(command) != -1) {
+      char url[MAX_URL_LENGTH];
+      strcopy(url, sizeof(url), g_WebShortcuts[i][destinationUrl]);
+      
+      ReplaceUrlParams(client, url, sizeof(url));
+      
+      WebFix_OpenUrl(client, "Easy Web Shortcuts", url, g_WebShortcuts[i][hidden], g_WebShortcuts[i][width], g_WebShortcuts[i][height]);
+      break;
+    }
+  }
+  
+  return Plugin_Continue;
+}
+
+public void OnPluginEnd()
+{
+  RemoveAllCommandListeners();
+}
+
+/*********************************
+ *  Commands
+ *********************************/
 
 public Action Command_Web(int client, int args)
 {
@@ -67,7 +118,7 @@ public Action Command_Web(int client, int args)
   char target[64];
   GetCmdArg(1, target, sizeof(target));
   
-  char url[2000];
+  char url[MAX_URL_LENGTH];
   GetCmdArg(2, url, sizeof(url));
   StripQuotes(url);
   
@@ -95,7 +146,33 @@ public Action Command_Web(int client, int args)
 	}
 
   for (int i = 0; i < target_count; ++i) {
-    WebFix_OpenUrl(target_list[i], "Easy Web Shortcuts", url);
+    char finalurl[MAX_URL_LENGTH];
+    strcopy(finalurl, sizeof(finalurl), url);
+    ReplaceUrlParams(target_list[i], finalurl, sizeof(finalurl));
+    WebFix_OpenUrl(target_list[i], "Easy Web Shortcuts", finalurl);
+  }
+  
+  return Plugin_Handled;
+}
+
+public Action Command_OpenUrlListener(int client, const char[] command, int args)
+{
+  if (!(1 <= client <= MaxClients))
+    return Plugin_Handled;
+
+  if (!IsClientInGame(client))
+    return Plugin_Handled;
+
+  for (int i = 0; i < g_WebShortcutsCount; ++i) {
+    if (g_WebShortcuts[i][commands].FindString(command) != -1) {
+      char url[MAX_URL_LENGTH];
+      strcopy(url, sizeof(url), g_WebShortcuts[i][destinationUrl]);
+      
+      ReplaceUrlParams(client, url, sizeof(url));
+
+      WebFix_OpenUrl(client, "Easy Web Shortcuts", url);
+      break;
+    }
   }
   
   return Plugin_Handled;
@@ -108,51 +185,26 @@ public Action Command_ReloadWebShortcuts(int client, int args)
   return Plugin_Handled;
 }
 
-public Action OnClientSayCommand(int client, const char[] command_t, const char[] command)
-{
-  for (int i = 0; i < g_WebShortcutsCount; ++i) {
-    if (StrContains(command, g_WebShortcuts[i][triggerText], false) == 0) {
-      char url[2000];
-      Format(url, sizeof(url), g_WebShortcuts[i][destinationUrl]);
-      
-      //Get Required information
-      char name[64];
-      char userid[16];
-      char steamid[32];
-      char steamid64[18];
-      char clientip[16];
-      
-      GetClientName(client, name, sizeof(name));
-      FormatEx(userid, sizeof(userid), "%u", GetClientUserId(client));
-      GetClientAuthId(client, AuthId_Steam2, steamid, sizeof(steamid));
-      GetClientAuthId(client, AuthId_SteamID64, steamid64, sizeof(steamid64));
-      GetClientIP(client, clientip, sizeof(clientip));
-      
-      //Replace various tags in url
-      ReplaceString(url, sizeof(url), "{SERVERIP}", g_ServerIp);
-      ReplaceString(url, sizeof(url), "{SERVERPORT}", g_ServerPort);
-      ReplaceString(url, sizeof(url), "{NAME}", name);
-      ReplaceString(url, sizeof(url), "{USERID}", userid);
-      ReplaceString(url, sizeof(url), "{STEAMID}", steamid);
-      ReplaceString(url, sizeof(url), "{STEAMID64}", steamid64);
-      ReplaceString(url, sizeof(url), "{IP}", clientip);
-      
-      WebFix_OpenUrl(client, "Easy Web Shortcuts", url, g_WebShortcuts[i][hidden], g_WebShortcuts[i][width], g_WebShortcuts[i][height]);
-      break;
-    }
-  }
-  
-  return Plugin_Continue;
-}
-
+/*********************************
+ *  Helper Functions / Other
+ *********************************/
 void LoadWebShortcutsFromConfig()
-{
+{ 
+  //Remove any previous command listeners
+  RemoveAllCommandListeners();
+
+  //Delete any previous arraylists
+  for (int i = 0; i < g_WebShortcutsCount; ++i) {
+    delete g_WebShortcuts[i][triggers];
+    delete g_WebShortcuts[i][commands];
+  }
+
   //Reset counter
   g_WebShortcutsCount = 0;
-  
+
   //Build config path
   char configFilePath[PLATFORM_MAX_PATH];
-  Format(configFilePath, sizeof(configFilePath), "configs/easywebshortcuts.txt");
+  strcopy(configFilePath, sizeof(configFilePath), "configs/easywebshortcuts.txt");
   BuildPath(Path_SM, configFilePath, PLATFORM_MAX_PATH, configFilePath);
   
   if (FileExists(configFilePath)) {
@@ -181,41 +233,64 @@ void LoadWebShortcutsFromConfig()
           continue; 
         
         //Parse line into g_WebShortcuts array
-        char part[3][2000];
+        char part[MAX_OPTION_GROUPS][MAX_URL_LENGTH];
         int index = ExplodeString(buffer, " ", part, sizeof(part), sizeof(part[]), true);
         
-        //Ensure we have 3 components in line (trigger, dimensions, url)
-        if (index == 3) {
+        //Ensure we have all config options
+        if (index == MAX_OPTION_GROUPS) {
           //Strip Quotes
           StripQuotes(part[0]);
           StripQuotes(part[1]);
           StripQuotes(part[2]);
-          
-          //Set some default values
+          StripQuotes(part[3]);
+
+          //Set default values
+          g_WebShortcuts[g_WebShortcutsCount][triggers] = new ArrayList(ByteCountToCells(64));
+          g_WebShortcuts[g_WebShortcutsCount][commands] = new ArrayList(ByteCountToCells(64));
           g_WebShortcuts[g_WebShortcutsCount][hidden] = false;
           g_WebShortcuts[g_WebShortcutsCount][width] = 0;
           g_WebShortcuts[g_WebShortcutsCount][height] = 0;
         
-          //Store trigger text and url
-          Format(g_WebShortcuts[g_WebShortcutsCount][triggerText], 255, part[0]);
-          Format(g_WebShortcuts[g_WebShortcutsCount][destinationUrl], 255, part[2]);
-          
+          //Process triggers
+          if (strlen(part[0]) != 0) {
+            char triggersPart[32][64];
+            int numTriggers = ExplodeString(part[0], VALUE_SEPARATOR, triggersPart, sizeof(triggersPart), sizeof(triggersPart[]), true);
+
+            for (int i = 0; i < numTriggers; ++i)
+              g_WebShortcuts[g_WebShortcutsCount][triggers].PushString(triggersPart[i]);
+          }
+
+          //Process commands
+          if (strlen(part[1]) != 0) {
+            char commandsPart[32][64];
+            int numCommands = ExplodeString(part[1], VALUE_SEPARATOR, commandsPart, sizeof(commandsPart), sizeof(commandsPart[]), true);
+
+            for (int i = 0; i < numCommands; ++i) {
+              StringToLower(commandsPart[i], sizeof(commandsPart[]));
+              g_WebShortcuts[g_WebShortcutsCount][commands].PushString(commandsPart[i]);
+              AddCommandListener(Command_OpenUrlListener, commandsPart[i]);
+            }
+          }
+
           //Process width/height
-          if (StrEqual(part[1], "full", false)) {
+          if (StrEqual(part[2], "full", false)) {
             g_WebShortcuts[g_WebShortcutsCount][width] = 0;
             g_WebShortcuts[g_WebShortcutsCount][height] = 0;
           }
-          else if (StrEqual(part[1], "hidden", false)) {
+          else if (StrEqual(part[2], "hidden", false)) {
             g_WebShortcuts[g_WebShortcutsCount][hidden] = true;
           }
           else {
             char dimensions[2][32];
-            ExplodeString(part[1], "x", dimensions, sizeof(dimensions), sizeof(dimensions[]), true);
+            ExplodeString(part[2], "x", dimensions, sizeof(dimensions), sizeof(dimensions[]), true);
             
             g_WebShortcuts[g_WebShortcutsCount][width] = StringToInt(dimensions[0]);
             g_WebShortcuts[g_WebShortcutsCount][height] = StringToInt(dimensions[1]);
           }
-          
+
+          //Process destination URL
+          strcopy(g_WebShortcuts[g_WebShortcutsCount][destinationUrl], 2000, part[3]);
+
           ++g_WebShortcutsCount;
         }
       }
@@ -225,4 +300,52 @@ void LoadWebShortcutsFromConfig()
   } else {
     LogError("Missing required config file: '%s'", configFilePath);
   }
+}
+
+void ReplaceUrlParams(int client, char[] url, int maxlen)
+{
+  if (!IsClientInGame(client))
+    return;
+  
+  char name[64], userid[16], steamid[32], steamid64[18], clientip[16];
+
+  //Get Required information
+  GetClientName(client, name, sizeof(name));
+  FormatEx(userid, sizeof(userid), "%u", GetClientUserId(client));
+  GetClientAuthId(client, AuthId_Steam2, steamid, sizeof(steamid));
+  GetClientAuthId(client, AuthId_SteamID64, steamid64, sizeof(steamid64));
+  GetClientIP(client, clientip, sizeof(clientip));
+  
+  //Replace various tags in url
+  ReplaceString(url, maxlen, "{SERVERIP}", g_ServerIp);
+  ReplaceString(url, maxlen, "{SERVERPORT}", g_ServerPort);
+  ReplaceString(url, maxlen, "{NAME}", name);
+  ReplaceString(url, maxlen, "{USERID}", userid);
+  ReplaceString(url, maxlen, "{STEAMID}", steamid);
+  ReplaceString(url, maxlen, "{STEAMID64}", steamid64);
+  ReplaceString(url, maxlen, "{IP}", clientip);
+  ReplaceString(url, maxlen, "{MAPNAME}", g_CurrentMapName);
+  ReplaceString(url, maxlen, "{MAPDISPLAYNAME}", g_CurrentMapDisplayName);
+}
+
+void RemoveAllCommandListeners()
+{
+  char command[64];
+  for (int i = 0; i < g_WebShortcutsCount; ++i) {
+    for (int j = 0; j < g_WebShortcuts[i][commands].Length; ++j) {
+      g_WebShortcuts[i][commands].GetString(j, command, sizeof(command));
+      RemoveCommandListener(Command_OpenUrlListener, command);
+    }
+  }
+}
+
+/*********************************
+ *  Stocks
+ *********************************/
+
+//Inplace transformation of string to lower case
+stock void StringToLower(char[] string, int len)
+{
+  for (int i = 0; i < len; ++i)
+    string[i] = CharToLower(string[i]);
 }

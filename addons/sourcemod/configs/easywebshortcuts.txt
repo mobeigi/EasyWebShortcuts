@@ -4,17 +4,27 @@
 // Enter your shortcuts in this file. One per line.
 // Empty lines or lines begging with '//' are ignored
 //
-// Format: "trigger" "dimensions" "url"
+// Format: "triggers" "commands" "dimensions" "url"
 //
 // dimensions must either be "full" (for client max screen size), "hidden" (invisible window) or in "widthxheight" format (i.e. 1280x720)
 // url should start with "http://", "https://" or be the exact string "about:blank"
 
-//Forum stuff
-"!forums" "full" "http://www.myforumexample.com"
-"!vip" "1280x720" "http://www.myforumexample.com/vip"
+//Triggers only (1280x720 resolution)
+"!vip" "" "1280x720" "http://www.example.com/vip"
 
-//General
-"!google" "full" "http://www.google.com"
-"secret_command_haha" "full" "https://forums.alliedmods.net"
-"!funnyvideo" "hidden" "https://www.youtube.com/watch?v=dQw4w9WgXcQ"
-"!stop" "hidden" "about:blank"
+//Commands Only (full resolution)
+"" "sm_wikipedia" "full" "http://www.wikipedia.org"
+
+//Multiple triggers and commands
+"!forums|!website|!home" "sm_forums|sm_website|sm_home" "full" "http://www.example.com"
+
+//Play Hidden video in background
+"!funnyvideo" "" "hidden" "https://www.youtube.com/watch?v=dQw4w9WgXcQ"
+
+//Stop playing hidden video in background
+"!stop" "" "hidden" "about:blank"
+
+//Using string replacements
+"!gametracker" "" "full" "https://www.gametracker.com/server_info/{SERVERIP}:{SERVERPORT}}/"
+"!serverswiththismap" "" "full" "https://www.gametracker.com/search/csgo/?search_by=map&query={MAPNAME}"
+"!mysteamprofile" "" "full" "http://steamcommunity.com/profiles/{STEAMID64}"
