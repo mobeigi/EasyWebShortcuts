@@ -1,5 +1,5 @@
 #include <sourcemod>
-#include <webfix>
+#include <vgui_motd_stocks>
 
 #pragma semicolon 1
 #pragma newdecls required
@@ -7,7 +7,7 @@
 /*********************************
  *  Plugin Information
  *********************************/
-#define PLUGIN_VERSION "1.10"
+#define PLUGIN_VERSION "1.11"
 
 public Plugin myinfo =
 {
@@ -35,7 +35,7 @@ enum WebShortcutStruct
   ArrayList:commands,
   width,
   height,
-  bool:hidden,
+  bool:show,
   String:destinationUrl[MAX_URL_LENGTH],
 }
 
@@ -90,8 +90,8 @@ public Action OnClientSayCommand(int client, const char[] command_t, const char[
       strcopy(url, sizeof(url), g_WebShortcuts[i][destinationUrl]);
       
       ReplaceUrlParams(client, url, sizeof(url));
-      
-      WebFix_OpenUrl(client, "Easy Web Shortcuts", url, g_WebShortcuts[i][hidden], g_WebShortcuts[i][width], g_WebShortcuts[i][height]);
+
+      CSGO_ShowMOTDPanel(client, "Easy Web Shortcuts", url, g_WebShortcuts[i][show], g_WebShortcuts[i][width], g_WebShortcuts[i][height]);
       break;
     }
   }
@@ -149,7 +149,7 @@ public Action Command_Web(int client, int args)
     char finalurl[MAX_URL_LENGTH];
     strcopy(finalurl, sizeof(finalurl), url);
     ReplaceUrlParams(target_list[i], finalurl, sizeof(finalurl));
-    WebFix_OpenUrl(target_list[i], "Easy Web Shortcuts", finalurl);
+    CSGO_ShowMOTDPanel(target_list[i], "Easy Web Shortcuts", finalurl, true);
   }
   
   return Plugin_Handled;
@@ -170,7 +170,7 @@ public Action Command_OpenUrlListener(int client, const char[] command, int args
       
       ReplaceUrlParams(client, url, sizeof(url));
 
-      WebFix_OpenUrl(client, "Easy Web Shortcuts", url);
+      CSGO_ShowMOTDPanel(client, "Easy Web Shortcuts", url, g_WebShortcuts[i][show]);
       break;
     }
   }
@@ -247,9 +247,9 @@ void LoadWebShortcutsFromConfig()
           //Set default values
           g_WebShortcuts[g_WebShortcutsCount][triggers] = new ArrayList(ByteCountToCells(64));
           g_WebShortcuts[g_WebShortcutsCount][commands] = new ArrayList(ByteCountToCells(64));
-          g_WebShortcuts[g_WebShortcutsCount][hidden] = false;
-          g_WebShortcuts[g_WebShortcutsCount][width] = 0;
-          g_WebShortcuts[g_WebShortcutsCount][height] = 0;
+          g_WebShortcuts[g_WebShortcutsCount][show] = true;
+          g_WebShortcuts[g_WebShortcutsCount][width] = CSGO_POPUP_FULL;
+          g_WebShortcuts[g_WebShortcutsCount][height] = CSGO_POPUP_FULL;
         
           //Process triggers
           if (strlen(part[0]) != 0) {
@@ -274,11 +274,11 @@ void LoadWebShortcutsFromConfig()
 
           //Process width/height
           if (StrEqual(part[2], "full", false)) {
-            g_WebShortcuts[g_WebShortcutsCount][width] = 0;
-            g_WebShortcuts[g_WebShortcutsCount][height] = 0;
+            g_WebShortcuts[g_WebShortcutsCount][width] = CSGO_POPUP_FULL;
+            g_WebShortcuts[g_WebShortcutsCount][height] = CSGO_POPUP_FULL;
           }
           else if (StrEqual(part[2], "hidden", false)) {
-            g_WebShortcuts[g_WebShortcutsCount][hidden] = true;
+            g_WebShortcuts[g_WebShortcutsCount][show] = false;
           }
           else {
             char dimensions[2][32];
